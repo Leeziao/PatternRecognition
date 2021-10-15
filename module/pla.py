@@ -1,7 +1,7 @@
 from typing import Optional
 import torch
 import matplotlib.pyplot as plt
-from .modulebase import LZABase
+from .ModuleBase import LZABase
 
 class PLA(LZABase):
     def train(self, update_steps: int=10):
@@ -10,13 +10,20 @@ class PLA(LZABase):
             self.w = self.w if torch.matmul(self.w, x)*y > 0 else self.w + x*y
 
 class Pocket(LZABase):
-    def train(self, update_steps: int=10):
+    def train(self, update_steps: int=10, verbose=False):
         tmp_w = self.w
+        Change = False
         for i in range(update_steps):
-            x, y = self.X[i % self.data_num], self.y[i % self.data_num]
-            tmp_w = tmp_w if torch.matmul(tmp_w, x)*y > 0 else tmp_w + x*y
+            item_idx = torch.randint(low=0, high=self.data_num, size=[1]).squeeze()
+            x, y = self.X[item_idx], self.y[item_idx]
+            if torch.matmul(tmp_w, x) * y <= 0:
+                tmp_w = tmp_w + x*y
+                Change = True
             if self.get_acc(tmp_w) > self.get_acc(self.w):
                 self.w = tmp_w
+            if verbose and Change:
+                print(f'idx={item_idx}, x={x}, y={y}, tmp_w={tmp_w}, w={self.w}')
+                Change = False
 
 
 if __name__ == '__main__':

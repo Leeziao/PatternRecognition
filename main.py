@@ -1,18 +1,10 @@
 from data import data_generator
-from module.pla import PLA, Pocket
+from module import PLA, Pocket, LinearRegression
+from solution import solution
 
-mean1 = [-5, 0]
-mean2 = [0, 5]
+import sys
+sys.path.append('.')
 
-x_train, y_train, x_test, y_test = data_generator(mean1, mean2)
-
-method_name = 'Pocket'
-method_name = 'PLA'
-Method = globals()[method_name]
-
-p = Method(x_train, y_train)
-# p = Pocket(x_train, y_train)
-p.train(100)
-print(f'Running {method_name}')
-p.evaluate(x_test, y_test)
-p.plot()
+s = solution(9)
+s.solve()
+# s.solve(kernel='gauss')
