@@ -2,30 +2,77 @@ from copy import deepcopy
 from typing import List, Optional
 from tensorboardX import SummaryWriter
 from torch.autograd import backward
+from torch.utils import data
 from .ModuleBase import LZABase
 from . import LinearRegression
 from optim import *
 from ScalerRecorder import ScalerRecorder
 import torch
+from copy import deepcopy
+from tqdm import tqdm
 
 class MultiClass(LZABase):
     def __init__(self, X: torch.Tensor, y: torch.Tensor, type:str='ovo') -> None:
         if type not in ['ovo', 'ova', 'softmax']:
             raise
-        padding = False if type in ['ovo', 'ova'] else True
-        self.type = type
-        super().__init__(X, y, padding=padding)
+        self.padding = False if type in ['ovo', 'ova'] else True
 
-    def train(self, epoches:int=100, batch_size:int=1, optim='SGD'):
+        if type == 'softmax':
+            self.writer = SummaryWriter()
+            self.loss_recoder = ScalerRecorder(self.writer)
+
+        self.type = type
+        super().__init__(X, y)
+
+    def train(self, epoches:int=1, batch_size:int=1, optim='SGD'):
         optim = globals()[optim]
         if self.type == 'ovo':
             self.train_ovo(epoches, batch_size, optim)
         elif self.type == 'ova':
             self.train_ova(epoches, optim)
         elif self.type == 'softmax':
-            pass
+            self.train_softmax(epoches, optim)
         else:
             raise NotImplementedError
+
+    def train_softmax(self, epoch: int, optim=SGD, batch_size: int=256):
+        c = deepcopy
+        self.w_s = torch.stack([c(self.w) for _ in range(self.classnum)], dim=0).transpose(0, 1)
+
+        self.optim = optim([self.w_s], lr=1e-6)
+
+        if batch_size > self.data_num:
+            batch_size = self.data_num
+
+        for _ in range(epoch):
+            pbar = tqdm(range(self.data_num // batch_size))
+            for it in pbar:
+                x_batch, y_batch = self.X[batch_size*it:batch_size*(it+1)], self.y[batch_size*it:batch_size*(it+1)]
+
+                loss = self.get_loss(x_batch, y_batch)
+                pbar.set_description(f'loss={round(loss.item(),3)}')
+                self.loss_recoder(loss.item())
+
+                backward_w = self.get_backward(x_batch, y_batch)
+
+                self.optim.step([backward_w])
+    
+    def predict_softmax(self, X, padding=None):
+        if X.dim() == 1:
+            X = X.unsqueeze(0)
+        if X.dim() != 2:
+            raise
+        
+        if padding != None and self.padding:
+            one = torch.tensor([1.]*len(X))
+            X = torch.cat([one.unsqueeze(-1), X], dim=-1)
+
+        
+        y_hat = torch.matmul(X, self.w_s)
+        reval = torch.argmax(y_hat, dim=-1)
+
+        return reval
+
     
     def train_ova(self, epoch: int, optim=SGD):
         pass
@@ -77,21 +124,39 @@ class MultiClass(LZABase):
                 if list(res.keys())[f.item()] == y.int().item():
                     acc += 1
             print(f'Acc for ovo method = {acc / datanum}')
+        
+        def get_softmax_acc():
+            c = deepcopy
+            test_x, test_y = c(self.X), c(self.y)
+            data_num = len(test_x)
+            acc = 0
+            for x, y in zip(test_x, test_y):
+                v = self.predict_softmax(x)
+                if v == y.int().item():
+                    acc += 1
+            
+            print(f'Acc for softmax method = {acc / data_num}')
+
 
         if self.type == 'ovo':
             get_ovo_acc()
-        pass
+        elif self.type == 'softmax':
+            get_softmax_acc()
 
     def get_loss(self, X, y):
-        t = torch.exp(-y * torch.matmul(X, self.w))
-        t = torch.log(1 + t)
-        t = torch.mean(t)
-        return t
+        y_onehot = torch.eye(self.classnum)[y.long()]
+        y_hat = torch.matmul(X, self.w_s)
+        y_hat = torch.clamp(y_hat, 1e-5, 1)
+        loss = -(y_onehot * torch.log(y_hat)).mean()
+        if torch.isinf(loss) or torch.isnan(loss):
+            raise ValueError
+        return loss
     
     def get_backward(self, X, y):
-        v = torch.exp(-y * torch.matmul(X, self.w))
-        top = -(y * v).unsqueeze(-1) * X
-        bot = 1 + v
-        ret = torch.mean(top / (bot).unsqueeze(-1), dim=0)
+        y_hat = torch.matmul(X, self.w_s)
+        t = torch.bmm(X.unsqueeze(-1), y_hat.unsqueeze(1))
+        for i in range(len(X)):
+            t[i, :, y[i].long()] -= X[i]
+        t = t.mean(dim = 0)
 
-        return ret
+        return t

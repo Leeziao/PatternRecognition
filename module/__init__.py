@@ -5,3 +5,5 @@ from .Fisher import *
 from .svm import *
 from .LogisticRegression import *
 from .multiclass import *
+from .mnist import *
+from .lenet import *

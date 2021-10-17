@@ -1,6 +1,8 @@
+from numpy import dtype
 from data import data_generator
 from module import *
 from sklearn.datasets import load_iris
+from torchvision import datasets, transforms
 
 class solution:
     def __init__(self, solution_num) -> None:
@@ -224,6 +226,47 @@ class solution:
 
         Method = globals()[method_name]
 
-        p = Method(x_train, y_train)
+        p = Method(x_train, y_train, type='softmax')
         p.train(epoches=300, optim='Adagrad')
         p.get_acc()
+
+    def solution10(self, mean1=[-5, 0], mean2=[0, 5]):
+        r"""
+        Solution for lecture 3 - Logistic Regression
+        """
+        # X, y = fetch_openml(data_id=41082, as_frame=False, return_X_y=True)
+        # mnist = fetch_openml('mnist')
+        # transform = transforms.Compose([transforms.ToTensor()])
+        d = datasets.MNIST('../data', train=True, download=True,
+                transform=transforms.Compose([
+                    transforms.ToTensor(),
+                ]))
+        x_train, y_train, x_test, y_test = torch.tensor(d.train_data, dtype=torch.float32), d.train_labels.int(), torch.tensor(d.test_data, dtype=torch.float32), d.test_labels.int()
+        method_name = 'MyMNIST'
+
+        x_train = x_train.reshape(len(x_train), -1)
+        x_test = x_test.reshape(len(x_test), -1)
+
+        Method = globals()[method_name]
+
+        p = Method(x_train, y_train, type='softmax')
+        p.train(optim='Adagrad', epoches=10)
+        p.get_mnist_acc(x_test, y_test)
+        p.plot(x_test, y_test)
+    
+    def solution11(self):
+        d = datasets.MNIST('../data', train=True, download=True,
+                transform=transforms.Compose([
+                    transforms.ToTensor(),
+                ]))
+        x_train, y_train, x_test, y_test = torch.tensor(d.train_data, dtype=torch.float32), d.train_labels.long(), torch.tensor(d.test_data, dtype=torch.float32), d.test_labels.long()
+        method_name = 'LeNetMNIST'
+
+        x_train = x_train.unsqueeze(1)
+        x_test = x_test.unsqueeze(1)
+
+        Method = globals()[method_name]
+
+        p = Method(x_train, y_train, x_test, y_test)
+        p.train(epoches=30)
+        p.get_acc(x_test, y_test)
